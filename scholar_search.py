@@ -14,9 +14,10 @@ if not SERPAPI_KEY:
     raise RuntimeError("Missing SERPAPI_KEY. Put it in a .env file or environment variable.")
 
 
-TOPIC = "world models"
-APPLICATION = "autonomous driving"
-QUERY = f'"{TOPIC}" "{APPLICATION}"'
+KEYWORDS = ["wearable", "speech recognition"]
+QUERY = " + ".join(KEYWORDS)
+
+MAX_RESULTS = 20
 
 
 def parse_year(publication_info: dict) -> int | None:
@@ -120,7 +121,6 @@ def google_scholar_search(query: str, max_results: int = 50, sleep_seconds: floa
                 "cited_by_count": cited_by.get("total", ""),
                 "cited_by_link": cited_by.get("link", ""),
                 "result_id": result.get("result_id", ""),
-                "source": "Google Scholar via SerpAPI",
                 "date_collected": datetime.now().strftime("%Y-%m-%d"),
             }
 
@@ -250,13 +250,6 @@ def main():
     )
 
     parser.add_argument(
-        "--max-results",
-        type=int,
-        default=60,
-        help="Number of Google Scholar results to collect.",
-    )
-
-    parser.add_argument(
         "--output",
         type=str,
         default="scholar_results.csv",
@@ -267,7 +260,7 @@ def main():
 
     papers = google_scholar_search(
         query=QUERY,
-        max_results=args.max_results,
+        max_results=MAX_RESULTS,
     )
 
     df = save_results(
@@ -279,7 +272,7 @@ def main():
     print()
     print(f"Query: {QUERY}")
     print(f"Mode: {args.mode}")
-    print(f"Max results: {args.max_results}")
+    print(f"Max results: {MAX_RESULTS}")
     print(f"Output file: {args.output}")
     print()
     print(df[["title", "year", "cited_by_count", "citations_per_year"]].head(10))
