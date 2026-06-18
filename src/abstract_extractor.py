@@ -1,24 +1,16 @@
 import argparse
 import csv
-import mimetypes
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
-import requests
+from output_utils import DEFAULT_OUTPUT_DIR, ensure_parent_dir, resolve_output_path
+from pdf_utils import download_pdf_bytes
 
 try:
     import fitz
 except ModuleNotFoundError:
     fitz = None
-
-
-USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/125.0 Safari/537.36"
-)
 
 
 def require_pymupdf() -> None:
@@ -27,57 +19,6 @@ def require_pymupdf() -> None:
             "PyMuPDF is required for PDF extraction. Install dependencies with "
             "`python3 -m pip install -r requirements.txt`."
         )
-
-
-def is_probably_pdf(response: requests.Response, url: str) -> bool:
-    content_type = response.headers.get("content-type", "").lower()
-    path = urlparse(response.url or url).path.lower()
-    return (
-        "application/pdf" in content_type
-        or path.endswith(".pdf")
-        or response.content.startswith(b"%PDF")
-    )
-
-
-def candidate_pdf_urls(row: dict[str, str]) -> list[str]:
-    urls = []
-    for key in ("pdf_link", "link"):
-        value = (row.get(key) or "").strip()
-        if value and value not in urls:
-            urls.append(value)
-    return urls
-
-
-def download_pdf_bytes(row: dict[str, str], timeout: int) -> tuple[bytes | None, str | None]:
-    headers = {"User-Agent": USER_AGENT}
-    errors = []
-
-    for url in candidate_pdf_urls(row):
-        try:
-            response = requests.get(
-                url,
-                headers=headers,
-                allow_redirects=True,
-                timeout=timeout,
-            )
-            response.raise_for_status()
-
-            if not is_probably_pdf(response, url):
-                guessed_type = mimetypes.guess_type(response.url or url)[0]
-                errors.append(
-                    f"{url} did not look like a PDF"
-                    + (f" ({guessed_type})" if guessed_type else "")
-                )
-                continue
-
-            return response.content, None
-        except requests.RequestException as exc:
-            errors.append(f"{url}: {exc}")
-
-    if not errors:
-        errors.append("no pdf_link or link found")
-
-    return None, "; ".join(errors)
 
 
 def page_texts(doc: Any, max_pages: int = 3) -> list[str]:
@@ -131,6 +72,7 @@ def read_rows(input_csv: Path) -> tuple[list[dict[str, str]], list[str]]:
 
 
 def write_rows(output_csv: Path, rows: list[dict[str, str]], fieldnames: list[str]) -> None:
+    ensure_parent_dir(output_csv)
     with output_csv.open("w", newline="", encoding="utf-8-sig") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
@@ -143,13 +85,18 @@ def main() -> None:
     )
     parser.add_argument(
         "--input",
-        default="scholar_results.csv",
+        required=True,
         help="CSV produced by the Scholar search program.",
     )
     parser.add_argument(
         "--output",
         default=None,
-        help="Output CSV path. Defaults to updating --input in place.",
+        help="Output CSV filename. Defaults to the input filename under --output-dir.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=str(DEFAULT_OUTPUT_DIR),
+        help="Directory for generated output files.",
     )
     parser.add_argument(
         "--abstract-column",
@@ -181,7 +128,7 @@ def main() -> None:
     args = parser.parse_args()
 
     input_csv = Path(args.input)
-    output_csv = Path(args.output) if args.output else input_csv
+    output_csv = resolve_output_path(args.output or input_csv.name, args.output_dir)
     rows, fieldnames = read_rows(input_csv)
 
     if args.abstract_column not in fieldnames:
