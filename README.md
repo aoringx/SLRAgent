@@ -145,7 +145,8 @@ python src/full_paper_extractor.py \
   --limit 5
 ```
 
-This command does not modify the Scholar CSV. It creates one folder per paper:
+This command does not modify the Scholar CSV. It creates one folder per paper.
+Successful extractions can include:
 
 ```text
 outputs/processed_papers/
@@ -158,6 +159,9 @@ outputs/processed_papers/
     ├── source_metadata.json
     └── fulltext.txt
 ```
+
+If a download or parser step fails, the paper folder may contain only the files
+created before that failure, with error details recorded in `paper.json`.
 
 For abstracts, the full extractor checks the CSV first. If the CSV abstract is
 empty, it tries to extract one from GROBID output.
